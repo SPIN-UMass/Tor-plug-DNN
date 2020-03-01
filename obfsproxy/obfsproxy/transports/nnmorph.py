@@ -9,7 +9,11 @@ import random
 
 from twisted.internet import threads
 
+import obfsproxy.transports.base as base
+
 from  collections import deque
+import obfsproxy.common.log as logging
+
 
 log = logging.get_obfslogger()
 
