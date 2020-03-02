@@ -13,11 +13,14 @@ import obfsproxy.transports.base as base
 
 from  collections import deque
 import obfsproxy.common.log as logging
+from model.dummy_nn  import Generator
 
+from threading import Timer
 
 log = logging.get_obfslogger()
 
 HISTORY_LEN = 10
+OUT_LEN = 10
 import time
 
 class NNTransport(base.BaseTransport):
@@ -28,12 +31,26 @@ class NNTransport(base.BaseTransport):
         super(NNTransport, self).__init__()
         self.sent_packets = deque(maxlen = HISTORY_LEN)
         self.rcvd_packets = deque(maxlen = HISTORY_LEN)
+        
+        
+        for _ in range(HISTORY_LEN): 
+            self.sent_packets.append((0,0))
+            self.rcvd_packets.append((0,0))
+        
+        
+        self.model = Generator(HISTORY_LEN,OUT_LEN)
+
 
     def circuitConnected(self):
         
 
         log.debug("SOMEONE connected")
 
+
+    def tick( self,message):
+        log.debug("TICKING")
+        self.sent_packets.append((time.time(),len(message)))
+        self.circuit.downstream.write(message)
 
 
     def receivedUpstream(self, data):
@@ -43,9 +60,19 @@ class NNTransport(base.BaseTransport):
         message = data.read()
         log.debug("nn receivedUpstream: Transmitting %d bytes.", len(message))
         
-        self.sent_packets.append((time.time(),len(message)))
+        times, sizes = self.model(self.rcvd_packets)
+        times= times.detach().numpy()
+        sizes = sizes.detach().numpy()
+        dl = float(times[0])/1000.0
+        log.debug('MMMM scheduled to send after %f ms',dl)
+        
+        ti = Timer(dl,self.tick,args=(message,))
+        ti.start()
+
+
+        
         # Proxy encrypted message.
-        self.circuit.downstream.write(message)
+        
 
     def receivedDownstream(self, data):
         """
